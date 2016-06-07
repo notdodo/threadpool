@@ -76,7 +76,8 @@ public:
         wait_var.wait(lock, [this]()->bool { return queue.empty(); });
         stop = true;
         lock.unlock();
-		std::for_each(threads.begin(), threads.end(), [](auto &t){ if(t.joinable()) t.join();  });
+        //std::for_each(threads.begin(), threads.end(), [](auto &t){ if(t.joinable()) t.join();  });
+        std::for_each(threads.begin(), threads.end(), std::mem_fn(&std::thread::join));
     }
 
 };
