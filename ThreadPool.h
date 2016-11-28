@@ -4,16 +4,16 @@
 #include <atomic>
 #include <thread>
 #include <mutex>
-#include <vector>
 #include <list>
 #include <condition_variable>
+#include <functional>
 
 class ThreadPool {
 
 private:
 	// number of thread
     unsigned threadCount;
-    std::vector<std::thread> threads;
+    std::list<std::thread> threads;
 	// where tasks are storage
     std::list<std::function<void(void)>> queue;
 
@@ -48,8 +48,8 @@ public:
         , stop(false)
     {
 		// create the threads
-        for (unsigned i = 0; i < threadCount; ++i)
-            threads[i] = std::move(std::thread([this] { this->Run(); }));
+		for (std::thread& t : threads)
+            t = std::move(std::thread([this] { this->Run(); }));
     }
 
 	// Deconstructor
@@ -76,8 +76,7 @@ public:
         wait_var.wait(lock, [this]()->bool { return queue.empty(); });
         stop = true;
         lock.unlock();
-        //std::for_each(threads.begin(), threads.end(), [](auto &t){ if(t.joinable()) t.join();  });
-        std::for_each(threads.begin(), threads.end(), std::mem_fn(&std::thread::join));
+		for (std::thread& t : threads) { if (t.joinable()) t.join(); }
     }
 
 };
