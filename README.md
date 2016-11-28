@@ -6,14 +6,15 @@ The library is very easy to use: just `#include` it to your project, create the 
 
 ```c++
 #include "ThreadPool.h"
+#include <iostream>
 
 int main(int argc, char **argv) {
 	// number of task to exec
-	const int TASKS 100;
+	const int TASKS=100000;
 
 	ThreadPool pool(std::thread::hardware_concurrency() + 1);
-	for(int i = 0; i < TASKS, i++)
-		pool.AddTask([]{ std::cout << "I'm task #" << i << " doing some stuff" << std::endl; });
+	for(int i = 0; i < TASKS; i++)
+		pool.AddTask([i]{ std::cout << "I'm task # " << i << " doing some stuffs" << std::endl; });
 
 	// wait for all tasks to finish, not necessary in this case: when `pool` goes out of scope it will automatically call `JoinAll`.
 	pool.JoinAll();
