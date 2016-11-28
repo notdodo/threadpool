@@ -25,61 +25,61 @@ private:
     // The thread will run until deconstructor or `JoinAll` are called
     // and it fetch the top of the queue to find a task to exec.
     void Run() {
-		while (!stop) {
-		    std::function<void(void)> run;
-		    std::unique_lock<std::mutex> lock(queue_mutex);
-		    if (!queue.empty()) {
-				run = queue.front();
-				queue.pop_front();
-				lock.unlock();
-				// unlock befor `run` to ensure parallelism
-				run();
-		    }
-			// awake some sleeping threads
-			wait_var.notify_one();
-		}
+        while (!stop) {
+            std::function<void(void)> run;
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            if (!queue.empty()) {
+                run = queue.front();
+                queue.pop_front();
+                lock.unlock();
+                // unlock befor `run` to ensure parallelism
+                run();
+            }
+            // awake some sleeping threads
+            wait_var.notify_one();
+        }
     }
 
 public:
     // Constructor
     ThreadPool(int c)
-	: threadCount(c)
-	, threads(threadCount)
-	, stop(false)
+        : threadCount(c)
+        , threads(threadCount)
+        , stop(false)
     {
-		// create the threads
-		for (std::thread& t : threads)
-			t = std::move(std::thread([this] { this->Run(); }));
+        // create the threads
+        for (std::thread& t : threads)
+            t = std::move(std::thread([this] { this->Run(); }));
     }
 
     // Deconstructor
     ~ThreadPool() {
-		JoinAll();
+        JoinAll();
     }
 
     // Add a task to queue
     // The function will add, at the end of the queue, a `void`
     // function only if no one is waiting for stop.
     void AddTask(std::function<void(void)> job) {
-		if (!stop) {
-			std::lock_guard<std::mutex> lock(queue_mutex);
-			queue.emplace_back(job);
-			wait_var.notify_one();
-		}
+        if (!stop) {
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            queue.emplace_back(job);
+            wait_var.notify_one();
+        }
     }
 
     // Wait until all tasks ended.
     // If the queue is not empty wait the end of all tasks inserted
     // and terminate the threads.
     void JoinAll() {
-		std::unique_lock<std::mutex> lock(queue_mutex);
-		wait_var.wait(lock, [this]() -> bool { return queue.empty(); });
-		stop = true;
-		lock.unlock();
-		for (std::thread& t : threads) {
-		    if (t.joinable())
-			t.join();
-		}
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        wait_var.wait(lock, [this]() -> bool { return queue.empty(); });
+        stop = true;
+        lock.unlock();
+        for (std::thread& t : threads) {
+            if (t.joinable())
+                t.join();
+        }
     }
 };
 
