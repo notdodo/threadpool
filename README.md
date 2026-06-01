@@ -1,7 +1,9 @@
 # ThreadPool
+
 A very fast and lightweight C++14 thread pool library (general purpose)
 
 # Example
+
 The library is very easy to use: just `#include` it to your project, create the object `ThreadPool pool(_numberofcores)` and add tasks to pool using `AddTask` functions.
 
 ```c++
@@ -22,7 +24,15 @@ int main(int argc, char **argv) {
 }
 ```
 
-### Development
+`AddTask` returns a `std::future`. Ignore it for fire-and-forget work, or keep it when you need the result:
 
-	Add support for `future`
-	Add support for multitemplate functions
+```c++
+ThreadPool pool(4);
+
+auto result = pool.AddTask([](int a, int b) {
+	return a + b;
+}, 20, 22);
+
+std::cout << result.get() << std::endl;
+pool.JoinAll();
+```
