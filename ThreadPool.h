@@ -4,20 +4,16 @@
 #include <condition_variable>
 #include <exception>
 #include <functional>
-#include <future>
 #include <list>
-#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
-#include <type_traits>
 #include <utility>
 
 /** @brief Small fixed-size thread pool for parallel route-neighborhood evaluation.
  *
- * AddTask returns a future for the task result. Ignore the future for
- * fire-and-forget work. JoinAll waits until both queued and active tasks finish,
- * then shuts down workers.
+ * Tasks are fire-and-forget closures. JoinAll waits until both queued and
+ * active tasks finish, then shuts down workers.
  */
 class ThreadPool {
 
@@ -29,7 +25,7 @@ class ThreadPool {
     /** @brief FIFO queue of submitted tasks. */
     std::list<std::function<void(void)>> queue;
 
-    bool stop;
+    bool stop = false;
     unsigned activeTasks = 0;
     std::condition_variable wait_var;
     std::condition_variable complete_var;
@@ -72,7 +68,7 @@ class ThreadPool {
                 (void)0;
             }
             {
-                std::lock_guard<std::mutex> lock(queue_mutex);
+                std::scoped_lock lock(queue_mutex);
                 --activeTasks;
                 if (queue.empty() && activeTasks == 0) {
                     complete_var.notify_all();
@@ -88,7 +84,7 @@ class ThreadPool {
      * to one worker so callers can pass std::thread::hardware_concurrency()
      * safely on platforms where it returns zero.
      */
-    explicit ThreadPool(unsigned c) : threadCount(c == 0 ? 1 : c), threads(threadCount), stop(false) {
+    explicit ThreadPool(unsigned c) : threadCount(c == 0 ? 1 : c), threads(threadCount) {
         // create the threads
         for (std::thread& t : threads)
             t = std::thread([this] { this->Run(); });
@@ -103,33 +99,20 @@ class ThreadPool {
         }
     }
 
-    /** @brief Queue a callable and return a future for its result.
+    /** @brief Queue a task for asynchronous execution.
      *
-     * This overload accepts a function, lambda, functor, or member function plus
-     * arguments. If shutdown has started, the returned future contains an
-     * exception instead of running the task. Ignore the future for
-     * fire-and-forget jobs.
+     * Tasks submitted after shutdown starts are ignored. This keeps destructor
+     * cleanup idempotent and avoids racing new work against JoinAll.
      */
-    template <typename F, typename... Args>
-    auto AddTask(F&& f, Args&&... args) -> std::future<typename std::result_of<F(Args...)>::type> {
-        using result_type = typename std::result_of<F(Args...)>::type;
-
-        auto task = std::make_shared<std::packaged_task<result_type()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...));
-        std::future<result_type> result = task->get_future();
-
+    void AddTask(std::function<void(void)> job) {
         {
-            std::lock_guard<std::mutex> lock(queue_mutex);
+            std::scoped_lock lock(queue_mutex);
             if (stop) {
-                std::promise<result_type> rejected;
-                result = rejected.get_future();
-                rejected.set_exception(std::make_exception_ptr(std::runtime_error("ThreadPool is stopped")));
-                return result;
+                return;
             }
-            queue.emplace_back([task] { (*task)(); });
+            queue.emplace_back(std::move(job));
         }
         wait_var.notify_one();
-        return result;
     }
 
     /** @brief Wait for all queued and active tasks, then join workers.
@@ -142,7 +125,7 @@ class ThreadPool {
             throw std::logic_error("ThreadPool::JoinAll cannot be called from a worker thread");
         }
 
-        std::lock_guard<std::mutex> join_lock(join_mutex);
+        std::scoped_lock join_lock(join_mutex);
         {
             std::unique_lock<std::mutex> lock(queue_mutex);
             stop = true;
